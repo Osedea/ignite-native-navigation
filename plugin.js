@@ -1,99 +1,88 @@
 // Ignite CLI plugin for NativeNavigation
 // ----------------------------------------------------------------------------
+const Mustache = require('mustache');
 
 const NPM_MODULE_NAME = 'react-native-navigation'
 const NPM_MODULE_VERSION = 'latest'
 
-// const PLUGIN_PATH = __dirname
+const PLUGIN_PATH = __dirname
 // const APP_PATH = process.cwd()
 
 
 const add = async function (context) {
   // Learn more about context: https://infinitered.github.io/gluegun/#/context-api.md
   const { ignite, print, filesystem, patching } = context
-  print.debug('here');
   const NPMPackage = filesystem.read('package.json', 'json');
   const name = NPMPackage.name;
   // install an NPM module and link it
   await ignite.addModule(NPM_MODULE_NAME)
 
   // install the module, android only.
-  // ignite.patchInFile(`${process.cwd()}/android/settings.gradle`,{
-  //   before: `include ':app'`,
-  //   insert: `include ':react-native-navigation'
-  //   project(':react-native-navigation').projectDir = new File(rootProject.projectDir, '../node_modules/react-native-navigation/android/app/')
+  ignite.patchInFile(`${process.cwd()}/android/settings.gradle`,{
+    before: `include ':app'`,
+    insert: `include ':react-native-navigation'
+    project(':react-native-navigation').projectDir = new File(rootProject.projectDir, '../node_modules/react-native-navigation/android/app/')
 
-  //   `, 
-  // });
+    `, 
+  });
 
-  // ignite.patchInFile(`${process.cwd()}/android/app/build.gradle`, {
-  //   after: 'compile "com\\.facebook\\.react:react-native',
-  //   insert: 'compile project(\':react-native-navigation\')',
-  // });
+  ignite.patchInFile(`${process.cwd()}/android/app/build.gradle`, {
+    after: 'compile "com\\.facebook\\.react:react-native',
+    insert: 'compile project(\':react-native-navigation\')',
+  });
 
-  // // import SplashActivity for wix native navigation
-  // print.debug(name.toLowerCase());
-  // ignite.patchInFile(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainActivity.java`, {
-  //   replace: 'import com\.facebook\.react\.ReactActivity;',
-  //   insert: 'import com.reactnativenavigation.controllers.SplashActivity;',
-  // });
+  // import SplashActivity for wix native navigation
+  ignite.patchInFile(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainActivity.java`, {
+    replace: 'import com\.facebook\.react\.ReactActivity;',
+    insert: 'import com.reactnativenavigation.controllers.SplashActivity;',
+  });
 
-  // ignite.patchInFile(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainActivity.java`, {
-  //   replace: 'public class MainActivity extends ReactActivity {',
-  //   insert: 'public class MainActivity extends SplashActivity {',
-  // });
-
-  // // import the NavigationApplication from reactnativenavigation package.
-  // ignite.patchInFile(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainApplication.java`, {
-  //   after: 'import android.app.Application;',
-  //   insert: 'import com.reactnativenavigation.NavigationApplication;'
-  // });
-  
-  // ignite.patchInFile(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainApplication.java`, {
-  //   replace: 'public class MainApplication extends Application implements ReactApplication {',
-  //   insert: 'public class MainApplication extends NavigationApplication implements ReactApplication {',
-  // });
-
-  // print.debug('deleting stuff in mainApp');
-  // // reworking MainApplication.java
-  // const val = patching.isInFile(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainApplication.java`,
-  //   `private final ReactNativeHost mReactNativeHost = new ReactNativeHost(this) {`);
+  ignite.patchInFile(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainActivity.java`, {
+    replace: 'public class MainActivity extends ReactActivity {',
+    insert: 'public class MainActivity extends SplashActivity {',
+  });
 
   const oldMainApplication = await filesystem.read(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainApplication.java`);
-  print.debug(oldMainApplication);
-  let packages = oldMainApplication.match(/asList\(([\s\S]*\));/g);
-  if (packages.length) {
-    packages = packages[0];
+  await filesystem.file(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainApplication.old.java`, { content: oldMainApplication });
+  
+  // some substr & substring hackery.
+  const ASLIST = 'asList(';
+  const restOfFile = oldMainApplication.substr(oldMainApplication.indexOf(ASLIST));
+  
+  // get the first occuring ); after the asList method declaration.
+  const closeIndex = restOfFile.indexOf(');');
+  const packages = restOfFile.substring(restOfFile.indexOf(ASLIST) + ASLIST.length + 1, closeIndex);
+  
+  let splitPackages = packages.trim();
+
+  // import statements
+  const imports = oldMainApplication.match(/^import.*$/gm).join('\n');
+
+  // onCreate
+  let onCreate;
+  if (oldMainApplication.match(/public void onCreate\(\) {[\s\S]*.}/g).length) {
+    onCreate = oldMainApplication.match(/public void onCreate\(\) {[\s\S]*.}/g);
   }
-  print.debug(packages);
-  // add methods to MainApplication
-  // ignite.patchInFile(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainApplication.java`, {
-  //   after: `private final ReactNativeHost mReactNativeHost = new ReactNativeHost(this)`,
-  //   insert: `
-  //   @Override
-  //   public boolean isDebug() {
-  //       // Make sure you are using BuildConfig from your own application
-  //       return BuildConfig.DEBUG;
-  //   }
 
-  //   @Override
-  //    public List<ReactPackage> createAdditionalReactPackages() {
-  //        return getPackages();
-  //    }
-  //   `,
-  // });
+  // build new MainApplication.java
 
+  const template = `MainApplication.java.ejs`
+  const target = `android/app/src/main/java/com/${name.toLowerCase()}/MainApplication.java`;
+  print.debug(`plugin path: ${PLUGIN_PATH}`);
+  print.debug(`process cwd: ${process.cwd()}`);
+  const props = {
+    packages: splitPackages,
+    packageName: name.toLowerCase(),
+    imports: imports,
+    onCreate,
+  };
 
-  // Example of copying templates/NativeNavigation to App/NativeNavigation
-  // if (!filesystem.exists(`${APP_PATH}/App/NativeNavigation`)) {
-  //   filesystem.copy(`${PLUGIN_PATH}/templates/NativeNavigation`, `${APP_PATH}/App/NativeNavigation`)
-  // }
-
-  // Example of patching a file
-  // ignite.patchInFile(`${APP_PATH}/App/Config/AppConfig.js`, {
-  //   insert: `import '../NativeNavigation/NativeNavigation'\n`,
-  //   before: `export default {`
-  // })
+  await context.template.generate({
+    template,
+    target,
+    props,
+    directory: `${PLUGIN_PATH}/templates`,
+  });
 }
 
 /**
