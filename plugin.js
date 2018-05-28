@@ -10,73 +10,78 @@ const NPM_MODULE_VERSION = 'latest'
 
 const add = async function (context) {
   // Learn more about context: https://infinitered.github.io/gluegun/#/context-api.md
-  const { ignite, print, filesystem } = context
-
+  const { ignite, print, filesystem, patching } = context
+  print.debug('here');
   const NPMPackage = filesystem.read('package.json', 'json');
   const name = NPMPackage.name;
-  const spinner = print.spin('setting up wix/react-native-navigation');
   // install an NPM module and link it
-  await ignite.addModule(NPM_MODULE_NAME, { link: true, version: NPM_MODULE_VERSION })
+  await ignite.addModule(NPM_MODULE_NAME)
 
   // install the module, android only.
-  spinner.start();
-  spinner.text = 'patching android/settings.gradle';
-  ignite.patchInFile(`${process.cwd()}/android/settings.gradle`,{
-    before: `include ':app'`,
-    insert: `
-    include ':react-native-navigation'
-    project(':react-native-navigation').projectDir = new File(rootProject.projectDir, '../node_modules/react-native-navigation/android/app/')
+  // ignite.patchInFile(`${process.cwd()}/android/settings.gradle`,{
+  //   before: `include ':app'`,
+  //   insert: `include ':react-native-navigation'
+  //   project(':react-native-navigation').projectDir = new File(rootProject.projectDir, '../node_modules/react-native-navigation/android/app/')
 
-    `, 
-  });
+  //   `, 
+  // });
 
-  spinner.text = 'patching android/app/build.gradle';
-  ignite.patchInFile(`${process.cwd()}/android/app/build.gradle`, {
-    after: 'compile "com.facebook.react:react-native:+"',
-    insert: 'compile project(\':react-native-navigation\')',
-  });
+  // ignite.patchInFile(`${process.cwd()}/android/app/build.gradle`, {
+  //   after: 'compile "com\\.facebook\\.react:react-native',
+  //   insert: 'compile project(\':react-native-navigation\')',
+  // });
 
-  spinner.text = 'patching MainActivity.java';
-  // import SplashActivity for wix native navigation
-  ingnite.patchInFile(`${process.cwd()}/android/app/src/java/com/${name.toLowerCase()}/MainApplication.java`, {
-    replace: 'import com.facebook.react.ReactActivity;',
-    insert: 'import com.reactnativenavigation.controllers.SplashActivity;',
-  });
+  // // import SplashActivity for wix native navigation
+  // print.debug(name.toLowerCase());
+  // ignite.patchInFile(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainActivity.java`, {
+  //   replace: 'import com\.facebook\.react\.ReactActivity;',
+  //   insert: 'import com.reactnativenavigation.controllers.SplashActivity;',
+  // });
 
-  ingnite.patchInFile(`${process.cwd()}/android/app/src/java/com/${name.toLowerCase()}/MainApplication.java`, {
-    replace: 'public class MainActivity extends ReactActivity {',
-    insert: 'public class MainActivity extends SplashActivity {',
-  });
+  // ignite.patchInFile(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainActivity.java`, {
+  //   replace: 'public class MainActivity extends ReactActivity {',
+  //   insert: 'public class MainActivity extends SplashActivity {',
+  // });
 
-  spinner.text = 'patching MainApplication.java';
-
-  // import the NavigationApplication from reactnativenavigation package.
-  ignite.patchInFile(`${process.cwd()}/android/app/src/java/com/MainApplication.java`, {
-    after: 'import android.app.Application;',
-    insert: 'import com.reactnativenavigation.NavigationApplication;'
-  });
+  // // import the NavigationApplication from reactnativenavigation package.
+  // ignite.patchInFile(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainApplication.java`, {
+  //   after: 'import android.app.Application;',
+  //   insert: 'import com.reactnativenavigation.NavigationApplication;'
+  // });
   
-  ignite.patchInFile(`${process.cwd()}/android/app/src/java/com/MainApplication.java`, {
-    replace: 'public class MainApplication extends Application implements ReactApplication {',
-    insert: 'public class MainApplication extends NavigationApplication implements ReactApplication {',
-  });
+  // ignite.patchInFile(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainApplication.java`, {
+  //   replace: 'public class MainApplication extends Application implements ReactApplication {',
+  //   insert: 'public class MainApplication extends NavigationApplication implements ReactApplication {',
+  // });
 
+  // print.debug('deleting stuff in mainApp');
+  // // reworking MainApplication.java
+  // const val = patching.isInFile(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainApplication.java`,
+  //   `private final ReactNativeHost mReactNativeHost = new ReactNativeHost(this) {`);
+
+  const oldMainApplication = await filesystem.read(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainApplication.java`);
+  print.debug(oldMainApplication);
+  let packages = oldMainApplication.match(/asList\(([\s\S]*\));/g);
+  if (packages.length) {
+    packages = packages[0];
+  }
+  print.debug(packages);
   // add methods to MainApplication
-  ignite.patchInFile(`${process.cwd()}/android/app/src/java/com/MainApplication.java`, {
-    after: 'private final ReactNativeHost mReactNativeHost = new ReactNativeHost(this) {',
-    insert: `
-    @Override
-    public boolean isDebug() {
-        // Make sure you are using BuildConfig from your own application
-        return BuildConfig.DEBUG;
-    }
+  // ignite.patchInFile(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainApplication.java`, {
+  //   after: `private final ReactNativeHost mReactNativeHost = new ReactNativeHost(this)`,
+  //   insert: `
+  //   @Override
+  //   public boolean isDebug() {
+  //       // Make sure you are using BuildConfig from your own application
+  //       return BuildConfig.DEBUG;
+  //   }
 
-    @Override
-     public List<ReactPackage> createAdditionalReactPackages() {
-         return getPackages();
-     }
-    `,
-  })
+  //   @Override
+  //    public List<ReactPackage> createAdditionalReactPackages() {
+  //        return getPackages();
+  //    }
+  //   `,
+  // });
 
 
   // Example of copying templates/NativeNavigation to App/NativeNavigation
@@ -116,12 +121,12 @@ const remove = async function (context) {
 
   spinner.text = 'patching MainActivity.java';
   // import SplashActivity for wix native navigation
-  ingnite.patchInFile(`${process.cwd()}/android/app/src/java/com/${name.toLowerCase()}/MainApplication.java`, {
+  ignite.patchInFile(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainApplication.java`, {
     replace: 'import com.reactnativenavigation.controllers.SplashActivity;',
     insert: 'import com.facebook.react.ReactActivity;',
   });
 
-  ingnite.patchInFile(`${process.cwd()}/android/app/src/java/com/${name.toLowerCase()}/MainApplication.java`, {
+  ignite.patchInFile(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainApplication.java`, {
     replace: 'public class MainActivity extends SplashActivity {',
     insert: 'public class MainActivity extends ReactActivity {',
   });
@@ -129,17 +134,17 @@ const remove = async function (context) {
   spinner.text = 'patching MainApplication.java';
 
   // import the NavigationApplication from reactnativenavigation package.
-  ignite.patchInFile(`${process.cwd()}/android/app/src/java/com/MainApplication.java`, {
+  ignite.patchInFile(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainApplication.java`, {
     delete: 'import com.reactnativenavigation.NavigationApplication;',
   });
   
-  ignite.patchInFile(`${process.cwd()}/android/app/src/java/com/MainApplication.java`, {
+  ignite.patchInFile(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainApplication.java`, {
     replace: 'public class MainApplication extends NavigationApplication implements ReactApplication {',
     insert: 'public class MainApplication extends Application implements ReactApplication {',
   });
 
   // add methods to MainApplication
-  ignite.patchInFile(`${process.cwd()}/android/app/src/java/com/MainApplication.java`, {
+  ignite.patchInFile(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainApplication.java`, {
    delete: `
     @Override
     public boolean isDebug() {
@@ -155,7 +160,7 @@ const remove = async function (context) {
   })
 
   // remove the npm module and unlink it
-  await ignite.removeModule(NPM_MODULE_NAME, { unlink: true })
+  await ignite.removeModule(NPM_MODULE_NAME)
 
   
 
