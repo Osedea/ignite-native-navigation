@@ -1,94 +1,88 @@
 // Ignite CLI plugin for NativeNavigation
 // ----------------------------------------------------------------------------
+const Mustache = require('mustache');
 
 const NPM_MODULE_NAME = 'react-native-navigation'
 const NPM_MODULE_VERSION = 'latest'
 
-// const PLUGIN_PATH = __dirname
+const PLUGIN_PATH = __dirname
 // const APP_PATH = process.cwd()
 
 
 const add = async function (context) {
   // Learn more about context: https://infinitered.github.io/gluegun/#/context-api.md
-  const { ignite, print, filesystem } = context
-
+  const { ignite, print, filesystem, patching } = context
   const NPMPackage = filesystem.read('package.json', 'json');
   const name = NPMPackage.name;
-  const spinner = print.spin('setting up wix/react-native-navigation');
   // install an NPM module and link it
-  await ignite.addModule(NPM_MODULE_NAME, { link: true, version: NPM_MODULE_VERSION })
+  await ignite.addModule(NPM_MODULE_NAME)
 
   // install the module, android only.
-  spinner.start();
-  spinner.text = 'patching android/settings.gradle';
   ignite.patchInFile(`${process.cwd()}/android/settings.gradle`,{
     before: `include ':app'`,
-    insert: `
-    include ':react-native-navigation'
+    insert: `include ':react-native-navigation'
     project(':react-native-navigation').projectDir = new File(rootProject.projectDir, '../node_modules/react-native-navigation/android/app/')
 
     `, 
   });
 
-  spinner.text = 'patching android/app/build.gradle';
   ignite.patchInFile(`${process.cwd()}/android/app/build.gradle`, {
-    after: 'compile "com.facebook.react:react-native:+"',
+    after: 'compile "com\\.facebook\\.react:react-native',
     insert: 'compile project(\':react-native-navigation\')',
   });
 
-  spinner.text = 'patching MainActivity.java';
   // import SplashActivity for wix native navigation
-  ingnite.patchInFile(`${process.cwd()}/android/app/src/java/com/${name.toLowerCase()}/MainApplication.java`, {
-    replace: 'import com.facebook.react.ReactActivity;',
+  ignite.patchInFile(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainActivity.java`, {
+    replace: 'import com\.facebook\.react\.ReactActivity;',
     insert: 'import com.reactnativenavigation.controllers.SplashActivity;',
   });
 
-  ingnite.patchInFile(`${process.cwd()}/android/app/src/java/com/${name.toLowerCase()}/MainApplication.java`, {
+  ignite.patchInFile(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainActivity.java`, {
     replace: 'public class MainActivity extends ReactActivity {',
     insert: 'public class MainActivity extends SplashActivity {',
   });
 
-  spinner.text = 'patching MainApplication.java';
-
-  // import the NavigationApplication from reactnativenavigation package.
-  ignite.patchInFile(`${process.cwd()}/android/app/src/java/com/MainApplication.java`, {
-    after: 'import android.app.Application;',
-    insert: 'import com.reactnativenavigation.NavigationApplication;'
-  });
+  const oldMainApplication = await filesystem.read(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainApplication.java`);
+  await filesystem.file(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainApplication.old.java`, { content: oldMainApplication });
   
-  ignite.patchInFile(`${process.cwd()}/android/app/src/java/com/MainApplication.java`, {
-    replace: 'public class MainApplication extends Application implements ReactApplication {',
-    insert: 'public class MainApplication extends NavigationApplication implements ReactApplication {',
+  // some substr & substring hackery.
+  const ASLIST = 'asList(';
+  const restOfFile = oldMainApplication.substr(oldMainApplication.indexOf(ASLIST));
+  
+  // get the first occuring ); after the asList method declaration.
+  const closeIndex = restOfFile.indexOf(');');
+  const packages = restOfFile.substring(restOfFile.indexOf(ASLIST) + ASLIST.length + 1, closeIndex);
+  
+  let splitPackages = packages.trim();
+
+  // import statements
+  const imports = oldMainApplication.match(/^import.*$/gm).join('\n');
+
+  // onCreate
+  let onCreate;
+  if (oldMainApplication.match(/public void onCreate\(\) {[\s\S]*.}/g).length) {
+    onCreate = oldMainApplication.match(/public void onCreate\(\) {[\s\S]*.}/g);
+  }
+
+  // build new MainApplication.java
+
+  const template = `MainApplication.java.ejs`
+  const target = `android/app/src/main/java/com/${name.toLowerCase()}/MainApplication.java`;
+  print.debug(`plugin path: ${PLUGIN_PATH}`);
+  print.debug(`process cwd: ${process.cwd()}`);
+  const props = {
+    packages: splitPackages,
+    packageName: name.toLowerCase(),
+    imports: imports,
+    onCreate,
+  };
+
+  await context.template.generate({
+    template,
+    target,
+    props,
+    directory: `${PLUGIN_PATH}/templates`,
   });
-
-  // add methods to MainApplication
-  ignite.patchInFile(`${process.cwd()}/android/app/src/java/com/MainApplication.java`, {
-    after: 'private final ReactNativeHost mReactNativeHost = new ReactNativeHost(this) {',
-    insert: `
-    @Override
-    public boolean isDebug() {
-        // Make sure you are using BuildConfig from your own application
-        return BuildConfig.DEBUG;
-    }
-
-    @Override
-     public List<ReactPackage> createAdditionalReactPackages() {
-         return getPackages();
-     }
-    `,
-  })
-
-
-  // Example of copying templates/NativeNavigation to App/NativeNavigation
-  // if (!filesystem.exists(`${APP_PATH}/App/NativeNavigation`)) {
-  //   filesystem.copy(`${PLUGIN_PATH}/templates/NativeNavigation`, `${APP_PATH}/App/NativeNavigation`)
-  // }
-
-  // Example of patching a file
-  // ignite.patchInFile(`${APP_PATH}/App/Config/AppConfig.js`, {
-  //   insert: `import '../NativeNavigation/NativeNavigation'\n`,
-  //   before: `export default {`
-  // })
 }
 
 /**
@@ -116,12 +110,12 @@ const remove = async function (context) {
 
   spinner.text = 'patching MainActivity.java';
   // import SplashActivity for wix native navigation
-  ingnite.patchInFile(`${process.cwd()}/android/app/src/java/com/${name.toLowerCase()}/MainApplication.java`, {
+  ignite.patchInFile(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainApplication.java`, {
     replace: 'import com.reactnativenavigation.controllers.SplashActivity;',
     insert: 'import com.facebook.react.ReactActivity;',
   });
 
-  ingnite.patchInFile(`${process.cwd()}/android/app/src/java/com/${name.toLowerCase()}/MainApplication.java`, {
+  ignite.patchInFile(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainApplication.java`, {
     replace: 'public class MainActivity extends SplashActivity {',
     insert: 'public class MainActivity extends ReactActivity {',
   });
@@ -129,17 +123,17 @@ const remove = async function (context) {
   spinner.text = 'patching MainApplication.java';
 
   // import the NavigationApplication from reactnativenavigation package.
-  ignite.patchInFile(`${process.cwd()}/android/app/src/java/com/MainApplication.java`, {
+  ignite.patchInFile(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainApplication.java`, {
     delete: 'import com.reactnativenavigation.NavigationApplication;',
   });
   
-  ignite.patchInFile(`${process.cwd()}/android/app/src/java/com/MainApplication.java`, {
+  ignite.patchInFile(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainApplication.java`, {
     replace: 'public class MainApplication extends NavigationApplication implements ReactApplication {',
     insert: 'public class MainApplication extends Application implements ReactApplication {',
   });
 
   // add methods to MainApplication
-  ignite.patchInFile(`${process.cwd()}/android/app/src/java/com/MainApplication.java`, {
+  ignite.patchInFile(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainApplication.java`, {
    delete: `
     @Override
     public boolean isDebug() {
@@ -155,7 +149,7 @@ const remove = async function (context) {
   })
 
   // remove the npm module and unlink it
-  await ignite.removeModule(NPM_MODULE_NAME, { unlink: true })
+  await ignite.removeModule(NPM_MODULE_NAME)
 
   
 
