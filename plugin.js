@@ -108,38 +108,49 @@ const remove = async function (context) {
 
   const NPMPackage = await filesystem.read('package.json', 'json');
   const name = NPMPackage.name;
-  const spinner = print.spin('remove native files patches');
-  // print.info('here')
+  const spinner = print.spin('reverting MainActivity.java');
+
   // import SplashActivity for wix native navigation
-  // ignite.patchInFile(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainActivity.java`, {
-  //   replace: 'import com.reactnativenavigation.controllers.SplashActivity;',
-  //   insert: 'import com.facebook.react.ReactActivity;',
-  // });
+  ignite.patchInFile(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainActivity.java`, {
+    replace: 'import com.reactnativenavigation.controllers.SplashActivity;',
+    insert: 'import com.facebook.react.ReactActivity;',
+  });
 
-  // ignite.patchInFile(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainActivity.java`, {
-  //   replace: 'public class MainActivity extends SplashActivity {',
-  //   insert: 'public class MainActivity extends ReactActivity {',
-  // });
+  ignite.patchInFile(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainActivity.java`, {
+    replace: 'public class MainActivity extends SplashActivity {',
+    insert: 'public class MainActivity extends ReactActivity {',
+  });
 
-  // const backupMainApplication = await filesystem.read(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainApplication.old.java`);
-  // if (backupMainApplication) {
-  //   await filesystem.file(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainApplication.java`, { content: backupMainApplication });
-  //   await filesystem.remove(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainApplication.old.java`)
-  // } else {
-  //   print.warning('Could not find MainActivity.old.java in your project ... perhaps you removed it?')
-  // }
+  spinner.text = 'Restoring MainActivity.old.java';
+  spinner.start();
 
-  // const backupAppDelegate = await filesystem.read(`${process.cwd()}/ios/${name.toLowerCase()}/AppDelegate.old.m`);
+  const backupMainApplication = await filesystem.read(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainApplication.old.java`);
+  if (backupMainApplication) {
+    await filesystem.file(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainApplication.java`, { content: backupMainApplication });
+    await filesystem.remove(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainApplication.old.java`)
+  } else {
+    print.warning('Could not find MainApplicaiton.old.java in your project ... perhaps you removed it?')
+  }
+  spinner.succeed()
+  spinner.text = 'Restoring AppDelegate.old.m';
+  spinner.start();
+
+  const backupAppDelegate = await filesystem.read(`${process.cwd()}/ios/${name.toLowerCase()}/AppDelegate.old.m`);
   
-  // if (backupAppDelegate) {
-  //   await filesystem.file(`${process.cwd()}/ios/${name.toLowerCase()}/AppDelegate.m`, { content: backupAppDelegate });
-  //   await filesystem.remove(`${process.cwd()}/ios/${name.toLowerCase()}/AppDelegate.old.m`);
-  // } else {
-  //   print.warning('Could not find AppDelegate.old.m in your project ... perhaps you removed it?')
-  // }
+  if (backupAppDelegate) {
+    await filesystem.file(`${process.cwd()}/ios/${name.toLowerCase()}/AppDelegate.m`, { content: backupAppDelegate });
+    await filesystem.remove(`${process.cwd()}/ios/${name.toLowerCase()}/AppDelegate.old.m`);
+  } else {
+    print.warning('Could not find AppDelegate.old.m in your project ... perhaps you removed it?')
+  }
+
+  spinner.succeed()
 
   // remove the npm module
-  // await ignite.removeModule(NPM_MODULE_NAME, { unlink: true });
+  spinner.text = 'Unlinking module';
+  spinner.start();
+  await ignite.removeModule(NPM_MODULE_NAME, { unlink: true });
+  spinner.succeed();
 
   // Example of removing App/NativeNavigation folder
   // const removeNativeNavigation = await context.prompt.confirm(
