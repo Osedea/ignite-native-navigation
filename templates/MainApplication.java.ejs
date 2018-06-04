@@ -4,7 +4,7 @@ package com.<%= props.packageName %>;
 
 import com.reactnativenavigation.NavigationApplication;
 
-public class MainApplication extends NavigationApplication implements ReactApplication {
+public class MainApplication extends NavigationApplication {
   
   @Override
   public boolean isDebug() {
@@ -29,7 +29,7 @@ public class MainApplication extends NavigationApplication implements ReactAppli
   }
 
   <% if (props.onCreate) { %>
-    @Override
+  @Override
     <%= props.onCreate %> 
   <% } %>
 }
