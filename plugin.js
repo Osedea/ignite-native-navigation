@@ -132,7 +132,7 @@ const remove = async function (context) {
         insert: 'public class MainActivity extends ReactActivity {',
     });
 
-    spinner.text = 'Restoring MainActivity.old.java';
+    spinner.text = 'Restoring MainActivity.old';
     spinner.start();
 
     const backupMainApplication = await filesystem.read(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainApplication.old`);

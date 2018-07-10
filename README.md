@@ -1,8 +1,8 @@
-# My Plugin
+# Ignite Native Navigation Plugin.
 
 This plugin installs the [wix/react-native-navigation](https://github.com/wix/react-native-navigation)
 
-The plugin creates 2 backup files called `MainApplication.old.java` and `AppDelegate.old.m` these will be used to restore your applicaiton to its original state shall you decided to remove the plugin. It is recommended that you commit these files.
+The plugin creates 2 files `MainApplication.old` and `AppDelegate.old` these are backups of your files before they were modified by `react-native-link.` They are used by the `plugin.remove`to restore your applicaiton to its original state shall you decided to remove the plugin. It is recommended that you commit these files.
 
 ## Example
 
