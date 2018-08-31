@@ -1,6 +1,9 @@
 // Ignite CLI plugin for NativeNavigation
 // ----------------------------------------------------------------------------
 const NPM_MODULE_NAME = 'react-native-navigation';
+let NPM_MODULE_VERSION = '^2.0.0';
+
+const helpers = require('./helpers');
 
 const PLUGIN_PATH = __dirname;
 // const APP_PATH = process.cwd()
@@ -8,42 +11,48 @@ const PLUGIN_PATH = __dirname;
 
 const add = async function (context) {
     // Learn more about context: https://infinitered.github.io/gluegun/#/context-api.md
-    const { ignite, filesystem } = context;
+    const { ignite, filesystem, prompt } = context;
     const NPMPackage = await filesystem.read('package.json', 'json');
     const name = NPMPackage.name;
 
+    let NativeNavigationV2 = false;
     // Android install.
-
-    ignite.patchInFile(`${process.cwd()}/android/app/build.gradle`, {
-        replace: `compileSdkVersion 23`,
-        insert: `compileSdkVersion 25`,
+    // prompt for react-native-navigation version.
+    const answer = await prompt.ask({
+        name: 'isV2',
+        type: 'radio',
+        message: 'Do you wish to use use React Native Navigation v2? (requires updating to gradle:3.0.1)',
+        choices: ['Yes', 'No'],
     });
+    NativeNavigationV2 = answer.isV2 === 'Yes';
+    if (NativeNavigationV2) {
+        // Gradle:3.0.1 install.
+        // Special thanks to Justin Lane for his efforts in creating a React Native Navigation v2 plugin. (https://github.com/juddey).
+        let supportVersion = 'reactNative51';
+        const answerSupportVersion = await prompt.ask({
+            name: 'reactNativeSupportVersion',
+            type: 'radio',
+            message: 'Which version of React Native do you wish to use?',
+            choices: [
+                'reactNative51 (Support for React Native 0.51 - 0.54)',
+                'reactNative55 (Support for React Native 0.55 and above)',
+            ],
+        });
+        supportVersion = answerSupportVersion.reactNativeSupportVersion.indexOf(supportVersion) < 0 ? 'reactNative55' : supportVersion;
+        // @Juddey, you can add your functionality for the installation of V2 over here.
+        // helper function for replacing compile with implementation in build.gradle
+        // helpers.updateGradleBuild(context)
 
-    ignite.patchInFile(`${process.cwd()}/android/app/build.gradle`, {
-        replace: `buildToolsVersion "23.0.1"`,
-        insert: `buildToolsVersion "25.0.1"`,
-    });
-
-    // import SplashActivity for wix native navigation
-    ignite.patchInFile(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainActivity.java`, {
-        replace: 'import com.facebook.react.ReactActivity;',
-        insert: 'import com.reactnativenavigation.controllers.SplashActivity;',
-    });
-
-    ignite.patchInFile(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainActivity.java`, {
-        replace: 'public class MainActivity extends ReactActivity {',
-        insert: 'public class MainActivity extends SplashActivity {',
-    });
-
-    ignite.patchInFile(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainActivity.java`, {
-        delete: '@Override',
-    });
+    } else {
+        NPM_MODULE_VERSION = '^1.1.0';
+        helpers.updateAndroidNavigationV1(context, name);
+    }
 
     const oldMainApplication = await filesystem.read(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainApplication.java`);
     // run react-native link after we read the old file data as it will generate new faulty imports
     await filesystem.file(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainApplication.old`, { content: oldMainApplication });
     // install an NPM module and link it
-    await ignite.addModule(NPM_MODULE_NAME, { link: true });
+    await ignite.addModule(NPM_MODULE_NAME, { link: true, version: NPM_MODULE_VERSION });
 
     // some substr & substring hackery.
     const ASLIST = 'asList(';
@@ -100,7 +109,7 @@ const add = async function (context) {
     iOSAppDelegate = iOSAppDelegate.replace(/^.*UIViewController \*rootViewController = \[UIViewController new\];.*(\r\n|\n|\r)/gm, '');
     iOSAppDelegate = iOSAppDelegate.replace(/^.*rootViewController\.view = rootView;.*(\r\n|\n|\r)/gm, '');
     iOSAppDelegate = iOSAppDelegate.replace(/^.*self\.window\.rootViewController = rootViewController;.*(\r\n|\n|\r)/gm, '');
-    iOSAppDelegate = iOSAppDelegate.replace(/^.*\[self\.window makeKeyAndVisible\];\.*(\r\n|\n|\r)/gm, additions);
+    iOSAppDelegate = iOSAppDelegate.replace(/^.*\[self\.window makeKeyAndVisible\];\.*(\r\n|\n|\r)/gm, NativeNavigationV2 ? '' : additions);
 
     await filesystem.file(`${process.cwd()}/ios/${name.toLowerCase()}/AppDelegate.m`, { content: iOSAppDelegate });
 
@@ -160,7 +169,7 @@ const remove = async function (context) {
     // remove the npm module
     spinner.text = 'Unlinking module';
     spinner.start();
-    await ignite.removeModule(NPM_MODULE_NAME, { unlink: true });
+    await ignite.removeModule(NPM_MODULE_NAME, { unlink: true, version: NPM_MODULE_VERSION });
     spinner.succeed();
 
     // Example of removing App/NativeNavigation folder
