@@ -71,26 +71,12 @@ async function patchMainApplicationV1(context, name, PLUGIN_PATH) {
         onCreate,
     };
 
-    // build new MainActivity.java
-    // const mainActivityTemplate = `MainActivity.java.ejs`;
-    // const mainActivityTarget = `android/app/src/main/java/com/${name.toLowerCase()}/MainActivity.java`;
-    // const mainActivityProps = {
-    //     packageName: name.toLowerCase(),
-    // };
-
     await context.template.generate({
         template: mainApplicationTemplate,
         target: mainApplicationTarget,
         props: mainApplicationProps,
         directory: `${PLUGIN_PATH}/templates/v1`,
     });
-
-    // await context.template.generate({
-    //     mainActivityTemplate,
-    //     mainActivityTarget,
-    //     mainActivityProps,
-    //     directory: `${PLUGIN_PATH}/templates/v1`,
-    // });
 }
 
 async function patchAppDelegateV1(context, name) {
@@ -109,29 +95,132 @@ async function patchAppDelegateV1(context, name) {
     });
 }
 
-function updateAndroidNavigationV2(context, name) {
-    const { ignite } = context;
-    const supportLibVersionString = '${rootProject.ext.supportLibVersion}';
+async function updateAndroidNavigationV2(context, name, PLUGIN_PATH, rnversion) {
+    const { ignite, filesystem } = context;
+    // eslint-disable-next-line no-template-curly-in-string
+    const supportLibVersionString = "${rootProject.ext.supportLibVersion}";
 
-    ignite.patchInFile(`${process.cwd()}/android/build.gradle`, {
-        after: `repositories {`,
-        insert: `  google()
-        mavenLocal()
-        mavenCentral()
-        jcenter()`,
+    ignite.patchInFile(`${process.cwd()}/android/settings.gradle`, {
+        before: `include ':app'`,
+        insert: `include ':react-native-navigation'
+        project(':react-native-navigation').projectDir = new File(rootProject.projectDir, '../node_modules/react-native-navigation/lib/android/app/')\n`,
     });
 
     ignite.patchInFile(`${process.cwd()}/android/build.gradle`, {
-        after: ''
+        replace: `        minSdkVersion = 16`,
+        insert: `        minSdkVersion = 18`,
+    });
+
+    ignite.patchInFile(`${process.cwd()}/android/build.gradle`, {
+        after: `        google()`,
+        insert: `        mavenLocal()
+        mavenCentral()`,
+    });
+
+    ignite.patchInFile(`${process.cwd()}/android/build.gradle`, {
+        before: `        maven {`,
+        insert: `        maven { url 'https://jitpack.io' }`,
+    });
+
+    ignite.patchInFile(`${process.cwd()}/android/app/build.gradle`, {
+        after: `dependencies {`,
+        insert: `implementation project(':react-native-navigation')`,
+    });
+
+    ignite.patchInFile(`${process.cwd()}/android/app/build.gradle`, {
+        after: `targetSdkVersion rootProject.ext.targetSdkVersion`,
+        insert: `missingDimensionStrategy "RNN.reactNativeVersion", "${rnversion}"`,
+    });
+
+    ignite.patchInFile(`${process.cwd()}/android/build.gradle`, {
+        before: `allprojects {`,
+        insert: `subprojects { subproject ->
+                afterEvaluate {
+                    if ((subproject.plugins.hasPlugin('android') || subproject.plugins.hasPlugin('android-library'))) {
+                        android {
+                            variantFilter { variant ->
+                                def names = variant.flavors*.name
+                                if (names.contains("reactNative51") || names.contains("reactNative55")) {
+                                    setIgnore(true)
+                                }
+                            }
+                        }
+                    }
+                }
+            }\n`,
+    });
+
+    // Patch MainActivity
+    ignite.patchInFile(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainActivity.java`, {
+        replace: 'import com.facebook.react.ReactActivity;',
+        insert: 'import com.reactnativenavigation.NavigationActivity;',
+    });
+
+    ignite.patchInFile(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainActivity.java`, {
+        replace: 'public class MainActivity extends ReactActivity {',
+        insert: 'public class MainActivity extends NavigationActivity {',
+    });
+
+    ignite.patchInFile(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainActivity.java`, {
+        delete: '@Override',
+    });
+
+    // Patch MainApplication
+    // build new MainApplication.java
+    
+    const oldMainApplication = await filesystem.read(`${process.cwd()}/android/app/src/main/java/com/${name.toLowerCase()}/MainApplication.java`);
+    // some substr & substring hackery.
+    const ASLIST = 'asList(';
+    const restOfFile = oldMainApplication.substr(oldMainApplication.indexOf(ASLIST));
+
+    // get the first occuring ); after the asList method declaration.
+    const closeIndex = restOfFile.indexOf(');');
+    const packages = restOfFile.substring(restOfFile.indexOf(ASLIST) + ASLIST.length + 1, closeIndex);
+    // react native link imports packages that do not exist.
+    const splitPackages = packages.trim();
+
+    const imports = oldMainApplication.match(/^import.*$/gm).join('\n');
+
+    // onCreate
+    let onCreate;
+    if (oldMainApplication.match(/public void onCreate\(\) {[\s\S]*.}/g).length) {
+        onCreate = oldMainApplication.match(/public void onCreate\(\) {[\s\S]*.}/g);
+    }
+
+    const mainApplicationTemplate = `MainApplication.java.ejs`;
+    const mainApplicationTarget = `android/app/src/main/java/com/${name.toLowerCase()}/MainApplication.java`;
+    const mainApplicationProps = {
+        packages: splitPackages,
+        packageName: name.toLowerCase(),
+        imports,
+        onCreate,
+    };
+
+    await context.template.generate({
+        template: mainApplicationTemplate,
+        target: mainApplicationTarget,
+        props: mainApplicationProps,
+        directory: `${PLUGIN_PATH}/templates/v2`,
     });
 }
 
-async function patchAppDelegateV2(context) {
-    const { ignite, filesystem } = context;
+async function patchAppDelegateV2(context, name, PLUGIN_PATH) {
+    const { ignite, filesystem, print } = context;
     const iOSAppDelegate = filesystem.read(`${process.cwd()}/ios/${name.toLowerCase()}/AppDelegate.m`);
     // create a backup of AppDelegate.m
     await filesystem.file(`${process.cwd()}/ios/${name.toLowerCase()}/AppDelegate.old`, { content: iOSAppDelegate });
 
+    // ignite.patchInFile(`${process.cwd()}/ios/${name.toLowerCase()}/AppDelegate.m`, {
+    //     before: `  return YES;`,
+    //     insert: `  [ReactNativeNavigation bootstrap:jsCodeLocation launchOptions:launchOptions];\n`,
+    // });
+    await context.template.generate({
+        template: 'AppDelegate.m.ejs',
+        target: `ios/${name}/AppDelegate.m`,
+        directory: `${PLUGIN_PATH}/templates/v2`,
+    });
+    print.warning('Ensure that the ReactNativeNavigation.xcodeproj is under Libraries');
+    print.warning('Ensure that libReactNativeNavigation.a exists in the Link Binary With Libraries');
 }
 
 /**
@@ -183,4 +272,6 @@ module.exports = {
     patchMainApplicationV1,
     patchAppDelegateV1,
     patchGradle,
+    updateAndroidNavigationV2,
+    patchAppDelegateV2,
 };

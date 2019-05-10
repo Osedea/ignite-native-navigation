@@ -1,7 +1,7 @@
 // Ignite CLI plugin for NativeNavigation
 // ----------------------------------------------------------------------------
 const NPM_MODULE_NAME = 'react-native-navigation';
-let NPM_MODULE_VERSION = '^2.0.0';
+let NPM_MODULE_VERSION = 'wix/react-native-navigation#d00bf22a1d7ceda61a8410c8f9db5a497c50c50f';
 
 const helpers = require('./helpers');
 
@@ -13,6 +13,12 @@ const updateAndroidV1 = async (context, name) => {
     await ignite.addModule(NPM_MODULE_NAME, { link: true, version: NPM_MODULE_VERSION });
     helpers.patchMainActivityV1(context, name);
     helpers.patchMainApplicationV1(context, name, PLUGIN_PATH);
+};
+
+const updateAndroidV2 = async (context, name, rnVersion) => {
+    const { ignite } = context;
+    await ignite.addModule(NPM_MODULE_NAME, { link: true, version: NPM_MODULE_VERSION });
+    helpers.updateAndroidNavigationV2(context, name, PLUGIN_PATH, rnVersion);
 };
 
 const add = async function (context) {
@@ -34,18 +40,22 @@ const add = async function (context) {
     if (NativeNavigationV2) {
         // Gradle:3.0.1 install.
         // Special thanks to Justin Lane for his efforts in creating a React Native Navigation v2 plugin. (https://github.com/juddey).
-        let supportVersion = 'reactNative51';
         const answerSupportVersion = await prompt.ask({
             name: 'reactNativeSupportVersion',
             type: 'radio',
-            message: 'Which version of React Native do you wish to use?',
+            message: 'Which version of React Native do you have installed?',
             choices: [
                 'reactNative51 (Support for React Native 0.51 - 0.54)',
-                'reactNative55 (Support for React Native 0.55 and above)',
+                'reactNative55',
+                'reactNative56',
+                'reactNative57',
+                'reactNative57_5',
             ],
         });
-        supportVersion = answerSupportVersion.reactNativeSupportVersion.indexOf(supportVersion) < 0 ? 'reactNative55' : supportVersion;
-        helpers.patchAppDelegateV2(context, name);
+
+        const supportVersion = answerSupportVersion.reactNativeSupportVersion.includes('reactNative51') ? 'reactNative51' : answerSupportVersion.reactNativeSupportVersion;
+        updateAndroidV2(context, name, supportVersion);
+        helpers.patchAppDelegateV2(context, name, PLUGIN_PATH);
     } else {
         // Insalling react-native-navigation v1
         NPM_MODULE_VERSION = 'wix/react-native-navigation#v1';
