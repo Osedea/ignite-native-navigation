@@ -1,7 +1,7 @@
 {
   "name": "ignite-native-navigation",
   "description": "An ignite plugin for wix/react-native-navigation in react native",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "license": "MIT",
   "author": {
     "name": "Osedea",
