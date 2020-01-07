@@ -11,5 +11,7 @@ Be sure to change your index file to register application with [native-navigatio
 
 
 ## Example
+```
 ignite add native-navigation
 ignite remove native-navigation
+```

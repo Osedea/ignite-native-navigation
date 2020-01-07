@@ -4,15 +4,26 @@ const NPM_MODULE_NAME = 'react-native-navigation';
 const NPM_MODULE_VERSION = '^4.0.5';
 
 const PLUGIN_PATH = __dirname;
-// const APP_PATH = process.cwd()
 
 
 const add = async function (context) {
     // Learn more about context: https://infinitered.github.io/gluegun/#/context-api.md
-    const { ignite, filesystem } = context;
+    const { ignite, filesystem, system, print } = context;
     const NPMPackage = await filesystem.read('package.json', 'json');
     const name = NPMPackage.name;
-    ignite.useYarn = true;
+
+    if (NPMPackage.dependencies['react-native'] <= '0.51.0') {
+        print.error('react-native-navigation is only supported on react-native versions greater than 0.51');
+        process.exit();
+    }
+    let nodeV = await system.run('node -v', { trim: true });
+    nodeV = nodeV.substring(1, nodeV.indexOf('.'));
+    if (Number(nodeV) <= 8) {
+        print.error('react-native-navigation requires node version to be greater than 8');
+        process.exit();
+    }
+
+
     ignite.addModule(NPM_MODULE_NAME, {
         link: false,
         version: NPM_MODULE_VERSION,
@@ -167,17 +178,49 @@ import com.reactnativenavigation.react.ReactGateway;
         `,
     });
 
-    const template = `AppDelegate.m.ejs`;
-    const target = `ios/${name}/AppDelegate.m`;
+    filesystem.copy(`${PLUGIN_PATH}/templates/AppDelegate.m`, `${process.cwd()}/ios/${name}/AppDelegate.m`, { overwrite: true });
 
-    await context.template.generate({
-        template,
-        target,
-        props: {},
-        directory: `${PLUGIN_PATH}/templates`,
+    spinner.stop();
+    spinner.text = 'Patching index.js ...';
+    spinner.start();
+
+    ignite.patchInFile(`${process.cwd()}/index.js`, {
+        replace: `import {AppRegistry} from 'react-native';`,
+        insert: `import { Navigation } from 'react-native-navigation';`,
     });
-    context.print.success('iOS installed successfully, don\'t forget to cd ios/ && pod install');
-    context.print.success('Modify your root index.js to use react-native-navigation \nhttps://wix.github.io/react-native-navigation/#/docs/Installing?id=you-can-use-react-native-navigation-o');
+
+    ignite.patchInFile(`${process.cwd()}/index.js`, {
+        delete: `import {name as appName} from './app.json';`,
+    });
+
+    ignite.patchInFile(`${process.cwd()}/index.js`, {
+        delete: `AppRegistry.registerComponent(appName, () => App);`,
+    });
+    
+    ignite.patchInFile(`${process.cwd()}/index.js`, {
+        after: `import App from './App';`,
+        insert: `
+Navigation.registerComponent(\`navigation.playground.WelcomeScreen\`, () => App);
+
+Navigation.events().registerAppLaunchedListener(() => {
+  Navigation.setRoot({
+    root: {
+      component: {
+        name: "navigation.playground.WelcomeScreen"
+      }
+    }
+  });
+});`,
+    });
+
+    spinner.succeed();
+
+    spinner.stop();
+    spinner.text = 'running pod install ...';
+    spinner.start();
+
+    system.run(`cd ${process.cwd()}/ios && pod install && cd ${process.cwd()}`);
+
     spinner.succeed();
 };
 
